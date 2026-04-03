@@ -161,13 +161,6 @@
       }
     }
       
-        map.setLayoutProperty(
-          "antennes-anfr-layer",
-          "visibility",
-          antennesVisible ? "visible" : "none"
-        );
-      }
-
       map.on("load", function () {
         CarteFacile.addOverlay(map, "levelCurves");
         ensureAntennesLayer();
