@@ -166,16 +166,9 @@
         ensureAntennesLayer();
       });
 
-      map.on("styledata", function () {
-        if (!map.isStyleLoaded()) return;
-      
-        if (!map.getSource("antennes-anfr") || !map.getLayer("antennes-anfr-layer")) {
-          ensureAntennesLayer();
-        }
-      
-        if (!map.getLayer("levelCurves")) {
-          CarteFacile.addOverlay(map, "levelCurves");
-        }
+      map.on("style.load", function () {
+        CarteFacile.addOverlay(map, "levelCurves");
+        ensureAntennesLayer();
       });
 
       map.on("click", "antennes-anfr-layer", function (e) {
