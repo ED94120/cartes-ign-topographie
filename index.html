@@ -151,6 +151,12 @@
             }
           });
         }
+      
+        map.setLayoutProperty(
+          "antennes-anfr-layer",
+          "visibility",
+          antennesVisible ? "visible" : "none"
+        );
       }
 
       map.on("load", function () {
@@ -159,14 +165,16 @@
       });
 
       map.on("styledata", function () {
-      if (!map.isStyleLoaded()) return;
-    
-      if (!map.getLayer("levelCurves")) {
-        CarteFacile.addOverlay(map, "levelCurves");
-      }
-    
-      ensureAntennesLayer();
-    });
+        if (!map.isStyleLoaded()) return;
+      
+        if (!map.getSource("antennes-anfr") || !map.getLayer("antennes-anfr-layer")) {
+          ensureAntennesLayer();
+        }
+      
+        if (!map.getLayer("levelCurves")) {
+          CarteFacile.addOverlay(map, "levelCurves");
+        }
+      });
 
       map.on("click", "antennes-anfr-layer", function (e) {
         const feature = e.features && e.features[0];
@@ -198,11 +206,13 @@
       document.getElementById("toggleAntennesBtn").addEventListener("click", function () {
         antennesVisible = !antennesVisible;
       
-        map.setLayoutProperty(
-          "antennes-anfr-layer",
-          "visibility",
-          antennesVisible ? "visible" : "none"
-        );
+        if (map.getLayer("antennes-anfr-layer")) {
+          map.setLayoutProperty(
+            "antennes-anfr-layer",
+            "visibility",
+            antennesVisible ? "visible" : "none"
+          );
+        }
       
         this.textContent = antennesVisible ? "Antennes : ON" : "Antennes : OFF";
       });
