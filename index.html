@@ -1,1 +1,447 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ma carte</title>
 
+    <!-- Importation des bibliothèques MapLibre GL JS -->
+    <link
+      href="https://unpkg.com/maplibre-gl@^5.5.0/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/maplibre-gl@^5.5.0/dist/maplibre-gl.js"></script>
+
+    <!-- Importation des bibliothèques Carte Facile -->
+    <link
+      href="https://unpkg.com/carte-facile@^0.9.0/dist/carte-facile.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/carte-facile@^0.9.0/dist/carte-facile.js"></script>
+
+    <style>
+      html,
+      body,
+      #map {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+      }
+
+      #map {
+        background: #000120;
+      }
+
+      #savePngBtn {
+        position: absolute;
+        top: 8px;
+        right: 50px;
+        z-index: 1000;
+        padding: 8px 12px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      #savePngBtn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      #previewContainer {
+        position: absolute;
+        left: 10px;
+        bottom: 10px;
+        z-index: 1000;
+        width: 320px;
+        background: white;
+        border: 1px solid #999;
+        padding: 10px;
+        box-sizing: border-box;
+      }
+
+      #downloadLink {
+        display: inline-block;
+        margin-bottom: 8px;
+      }
+
+      #previewImg {
+        display: block;
+        width: 100%;
+        height: auto;
+        min-height: 120px;
+        object-fit: contain;
+        border: 1px solid #999;
+        background: #f5f5f5;
+      }
+
+      #previewStatus {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #333;
+      }
+    </style>
+  </head>
+
+  <body>
+    <button id="savePngBtn">Save .png</button>
+
+    <div id="map"></div>
+
+    <div id="previewContainer">
+      <a id="downloadLink" href="#" download="carte.png">Télécharger le PNG</a>
+      <img id="previewImg" alt="Aperçu PNG" />
+      <label for="coordsCorners"><strong>Coins géographiques (SO, NO, NE, SE)</strong></label>
+      <textarea id="coordsCorners" rows="10" style="width:100%; box-sizing:border-box; margin-top:8px; font-family:monospace; font-size:12px;"></textarea>
+      <div id="previewStatus">Aucun aperçu généré.</div>
+    </div>
+
+    <script>
+      let map = new maplibregl.Map({
+        container: "map",
+        style: CarteFacile.mapStyles.simple,
+        maxZoom: 18.9,
+        preserveDrawingBuffer: true
+      });
+
+      let currentPngDataURL = "";
+      let isGenerating = false;
+
+      map.addControl(new CarteFacile.SearchControl());
+      map.addControl(new maplibregl.NavigationControl());
+
+      map.addControl(
+        new maplibregl.ScaleControl({
+          maxWidth: 290,
+          unit: "metric"
+        }),
+        "top-left"
+      );
+
+      map.addControl(new maplibregl.GeolocateControl());
+      map.addControl(new CarteFacile.MapSelectorControl());
+
+      map.on("load", function () {
+        CarteFacile.addOverlay(map, "levelCurves");
+
+        map.addSource("antennes-anfr", {
+          type: "geojson",
+          data: "./data/GeoJSON-support_antennes_ANFR-light-2026-04-03.geojson"
+        });
+
+        map.addLayer({
+          id: "antennes-anfr-layer",
+          type: "circle",
+          source: "antennes-anfr",
+          minzoom: 8,
+          paint: {
+            "circle-radius": [
+              "interpolate", ["linear"], ["zoom"],
+              8, 2,
+              10, 3,
+              13, 4,
+              16, 6
+            ],
+            "circle-color": "#ff5a3c",
+            "circle-opacity": 0.70,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#ffffff"
+          }
+        });
+      });
+
+      map.on("click", "antennes-anfr-layer", function (e) {
+        const feature = e.features && e.features[0];
+        if (!feature) return;
+
+        const coords = feature.geometry.coordinates.slice();
+        const supId = feature.properties.SUP_ID || "";
+
+        new maplibregl.Popup({ closeButton: true })
+          .setLngLat(coords)
+          .setHTML(
+            "<strong>Support ANFR</strong><br>" +
+            "SUP_ID : " + supId + "<br>" +
+            "<a href='https://www.cartoradio.fr/#/cartographie/lonlat/" +
+            coords[0] + "/" + coords[1] +
+            "' target='_blank' rel='noopener'>Ouvrir Cartoradio</a>"
+          )
+          .addTo(map);
+      });
+
+      map.on("mouseenter", "antennes-anfr-layer", function () {
+        map.getCanvas().style.cursor = "pointer";
+      });
+
+      map.on("mouseleave", "antennes-anfr-layer", function () {
+        map.getCanvas().style.cursor = "";
+      });
+
+      function getNiceScaleDistance(targetMeters) {
+        const niceValues = [
+          1, 2, 5,
+          10, 20, 50,
+          100, 200, 500,
+          1000, 2000, 5000,
+          10000, 20000, 50000,
+          100000
+        ];
+
+        for (let i = 0; i < niceValues.length; i++) {
+          if (niceValues[i] >= targetMeters) {
+            return niceValues[i];
+          }
+        }
+
+        return niceValues[niceValues.length - 1];
+      }
+
+      function formatScaleLabel(meters) {
+        if (meters >= 1000) {
+          return (meters / 1000) + " km";
+        }
+        return meters + " m";
+      }
+
+      function drawScaleOnCanvas(ctx, map, canvasWidth, canvasHeight) {
+        const marginLeft = 20;
+        const marginBottom = 20;
+
+        const samplePx = 150;
+        const barHeight = 10;
+        const boxPaddingX = 12;
+        const boxPaddingY = 10;
+        const textBarGap = 6;
+        const labelGap = 14;
+
+        const yMeasure = canvasHeight - marginBottom - 30;
+        const xMeasure = marginLeft;
+
+        const p1 = [xMeasure, yMeasure];
+        const p2 = [xMeasure + samplePx, yMeasure];
+
+        const ll1 = map.unproject(p1);
+        const ll2 = map.unproject(p2);
+
+        const metersForSample = ll1.distanceTo(ll2);
+        const targetMeters = metersForSample * 0.7;
+        const niceMeters = getNiceScaleDistance(targetMeters);
+
+        const pixelsPerMeter = samplePx / metersForSample;
+        const scalePx = Math.round(niceMeters * pixelsPerMeter);
+        const halfMeters = niceMeters / 2;
+        const halfPx = scalePx / 2;
+
+        const xBar = marginLeft;
+        const yBar = canvasHeight - marginBottom - barHeight - 6;
+
+        ctx.save();
+        ctx.font = "12px Arial";
+        ctx.textBaseline = "alphabetic";
+        ctx.lineJoin = "round";
+        ctx.lineCap = "butt";
+
+        const leftLabel = "0";
+        const midLabel = formatScaleLabel(halfMeters);
+        const rightLabel = formatScaleLabel(niceMeters);
+
+        const textTop = yBar - textBarGap;
+
+        const leftWidth = ctx.measureText(leftLabel).width;
+        const midWidth = ctx.measureText(midLabel).width;
+        const rightWidth = ctx.measureText(rightLabel).width;
+
+        const boxY = textTop - 12 - boxPaddingY;
+
+        const contentLeft = Math.min(
+          xBar - leftWidth / 2,
+          xBar
+        );
+
+        const contentRight = Math.max(
+          xBar + scalePx + rightWidth / 2,
+          xBar + scalePx
+        );
+
+        const boxX = contentLeft - boxPaddingX;
+        const boxWidth = (contentRight - contentLeft) + boxPaddingX * 2;
+        const tickExtraBottom = 8;
+        const boxHeight = (textTop - boxY) + barHeight + boxPaddingY + tickExtraBottom;
+
+        ctx.fillStyle = "rgba(255,255,255,0.78)";
+        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+        ctx.strokeStyle = "rgba(0,0,0,0.35)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+        ctx.fillStyle = "white";
+        ctx.fillRect(xBar, yBar, halfPx, barHeight);
+
+        ctx.fillStyle = "black";
+        ctx.fillRect(xBar + halfPx, yBar, halfPx, barHeight);
+
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(xBar, yBar, scalePx, barHeight);
+
+        ctx.beginPath();
+        ctx.moveTo(xBar, yBar);
+        ctx.lineTo(xBar, yBar + barHeight + 4);
+
+        ctx.moveTo(xBar + halfPx, yBar);
+        ctx.lineTo(xBar + halfPx, yBar + barHeight + 4);
+
+        ctx.moveTo(xBar + scalePx, yBar);
+        ctx.lineTo(xBar + scalePx, yBar + barHeight + 4);
+        ctx.stroke();
+
+        ctx.fillStyle = "black";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "white";
+
+        ctx.strokeText(leftLabel, xBar - leftWidth / 2, textTop);
+        ctx.fillText(leftLabel, xBar - leftWidth / 2, textTop);
+
+        ctx.strokeText(midLabel, xBar + halfPx - midWidth / 2, textTop);
+        ctx.fillText(midLabel, xBar + halfPx - midWidth / 2, textTop);
+
+        ctx.strokeText(rightLabel, xBar + scalePx - rightWidth / 2, textTop);
+        ctx.fillText(rightLabel, xBar + scalePx - rightWidth / 2, textTop);
+
+        ctx.restore();
+      }
+
+      function updateCornerCoordinates(map) {
+        const mapWidthCss = map.getContainer().clientWidth;
+        const mapHeightCss = map.getContainer().clientHeight;
+
+        const coinNO = map.unproject([0, 0]);
+        const coinNE = map.unproject([mapWidthCss, 0]);
+        const coinSE = map.unproject([mapWidthCss, mapHeightCss]);
+        const coinSO = map.unproject([0, mapHeightCss]);
+
+        const txt =
+          "SO;" + coinSO.lat.toFixed(8) + ";" + coinSO.lng.toFixed(8) + "\n" +
+          "NO;" + coinNO.lat.toFixed(8) + ";" + coinNO.lng.toFixed(8) + "\n" +
+          "NE;" + coinNE.lat.toFixed(8) + ";" + coinNE.lng.toFixed(8) + "\n" +
+          "SE;" + coinSE.lat.toFixed(8) + ";" + coinSE.lng.toFixed(8);
+
+        document.getElementById("coordsCorners").value = txt;
+      }
+
+      function updatePreview(dataURL, fileName) {
+        const previewImg = document.getElementById("previewImg");
+        const downloadLink = document.getElementById("downloadLink");
+        const previewStatus = document.getElementById("previewStatus");
+
+        currentPngDataURL = dataURL;
+
+        previewImg.src = dataURL;
+        downloadLink.href = dataURL;
+        downloadLink.download = fileName;
+
+        const now = new Date();
+        previewStatus.textContent =
+          "Aperçu mis à jour : " + now.toLocaleTimeString();
+      }
+
+      function waitForMapReady(map) {
+        return new Promise((resolve) => {
+          const timeoutMs = 5000;
+          const start = Date.now();
+
+          function checkReady() {
+            if (map.isStyleLoaded() && map.areTilesLoaded()) {
+              map.off("render", checkReady);
+              resolve();
+              return;
+            }
+
+            if (Date.now() - start > timeoutMs) {
+              map.off("render", checkReady);
+              resolve();
+            }
+          }
+
+          map.on("render", checkReady);
+          map.triggerRepaint();
+          checkReady();
+        });
+      }
+
+      function waitNextRender(map) {
+        return new Promise((resolve) => {
+          map.once("render", function () {
+            resolve();
+          });
+          map.triggerRepaint();
+        });
+      }
+
+      document
+        .getElementById("savePngBtn")
+        .addEventListener("click", async function () {
+          if (isGenerating) return;
+
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, "0");
+
+          let fileName =
+            "carteIGN_" +
+            now.getFullYear() +
+            "-" +
+            pad(now.getMonth() + 1) +
+            "-" +
+            pad(now.getDate()) +
+            "_" +
+            pad(now.getHours()) +
+            "-" +
+            pad(now.getMinutes()) +
+            "-" +
+            pad(now.getSeconds()) +
+            ".png";
+
+          const btn = document.getElementById("savePngBtn");
+          const previewStatus = document.getElementById("previewStatus");
+
+          isGenerating = true;
+          btn.disabled = true;
+          btn.textContent = "Génération...";
+          previewStatus.textContent = "Génération du PNG en cours...";
+
+          try {
+            await waitForMapReady(map);
+            await waitNextRender(map);
+
+            const sourceCanvas = map.getCanvas();
+
+            const exportCanvas = document.createElement("canvas");
+            exportCanvas.width = sourceCanvas.width;
+            exportCanvas.height = sourceCanvas.height;
+
+            const ctx = exportCanvas.getContext("2d");
+            ctx.drawImage(sourceCanvas, 0, 0, exportCanvas.width, exportCanvas.height);
+            updateCornerCoordinates(map, exportCanvas.width, exportCanvas.height);
+
+            drawScaleOnCanvas(ctx, map, exportCanvas.width, exportCanvas.height);
+
+            const dataURL = exportCanvas.toDataURL("image/png");
+
+            if (!dataURL || dataURL === "data:,") {
+              throw new Error("PNG vide");
+            }
+
+            updatePreview(dataURL, fileName);
+          } catch (e) {
+            console.error(e);
+            alert("Erreur pendant la génération du PNG.");
+            previewStatus.textContent = "Erreur pendant la génération.";
+          } finally {
+            isGenerating = false;
+            btn.disabled = false;
+            btn.textContent = "Save .png";
+          }
+        });
+    </script>
+  </body>
+</html>
