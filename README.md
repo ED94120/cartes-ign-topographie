@@ -9,3 +9,7 @@ Fichier contenant la position des supports des antenens : "./data/GeoJSON-suppor
 URL : https://ed94120.github.io/cartes-ign-topographie/
 
 URL pour récupérer les localisations des supports d'antennes : https://www.data.gouv.fr/datasets/donnees-sur-les-installations-radioelectriques-de-plus-de-5-watts-1
+
+Format du nom des Fichiers ZIP récupérés : 20260228-export-etalab-data.zip
+
+Nom du fichier contenat les coordonnées des supports dans le fichier ZIP : SUP_SUPPORT.txt
