@@ -84,15 +84,40 @@
 
   <body>
     <button id="savePngBtn">Save .png</button>
-    <button id="toggleAntennesBtn" style="position:absolute; top:8px; right:150px; z-index:1000; padding:8px 12px; font-size:14px; cursor:pointer;">Antennes : ON</button>
+    <button
+      id="toggleAntennesBtn"
+      style="
+        position:absolute;
+        top:8px;
+        right:150px;
+        z-index:1000;
+        padding:8px 12px;
+        font-size:14px;
+        cursor:pointer;
+      "
+    >
+      Antennes : ON
+    </button>
 
     <div id="map"></div>
 
     <div id="previewContainer">
       <a id="downloadLink" href="#" download="carte.png">Télécharger le PNG</a>
       <img id="previewImg" alt="Aperçu PNG" />
-      <label for="coordsCorners"><strong>Coins géographiques (SO, NO, NE, SE)</strong></label>
-      <textarea id="coordsCorners" rows="10" style="width:100%; box-sizing:border-box; margin-top:8px; font-family:monospace; font-size:12px;"></textarea>
+      <label for="coordsCorners">
+        <strong>Coins géographiques (SO, NO, NE, SE)</strong>
+      </label>
+      <textarea
+        id="coordsCorners"
+        rows="10"
+        style="
+          width:100%;
+          box-sizing:border-box;
+          margin-top:8px;
+          font-family:monospace;
+          font-size:12px;
+        "
+      ></textarea>
       <div id="previewStatus">Aucun aperçu généré.</div>
     </div>
 
@@ -108,6 +133,10 @@
       let isGenerating = false;
       let antennesVisible = true;
 
+      const GEOJSON_API_URL =
+        "https://api.github.com/repos/ED94120/cartes-ign-topographie/contents/data";
+      let latestGeoJSONUrl = "";
+
       map.addControl(new CarteFacile.SearchControl());
       map.addControl(new maplibregl.NavigationControl());
 
@@ -122,53 +151,103 @@
       map.addControl(new maplibregl.GeolocateControl());
       map.addControl(new CarteFacile.MapSelectorControl());
 
-    function ensureAntennesLayer() {
-      if (!map.getSource("antennes-anfr")) {
-        map.addSource("antennes-anfr", {
-          type: "geojson",
-          data: "./data/GeoJSON-support_antennes_ANFR-light-2026-04-03.geojson"
-        });
+      async function getLatestGeoJSONUrl() {
+        if (latestGeoJSONUrl) {
+          return latestGeoJSONUrl;
+        }
+
+        const prefix = "GeoJSON-support_antennes_ANFR-light-";
+        const suffix = ".geojson";
+
+        const response = await fetch(GEOJSON_API_URL);
+        if (!response.ok) {
+          throw new Error("Impossible de lire le contenu du dossier data.");
+        }
+
+        const files = await response.json();
+
+        const matches = files
+          .filter(
+            (item) =>
+              item &&
+              item.type === "file" &&
+              typeof item.name === "string" &&
+              item.name.startsWith(prefix) &&
+              item.name.endsWith(suffix)
+          )
+          .sort((a, b) => b.name.localeCompare(a.name));
+
+        if (matches.length === 0) {
+          throw new Error("Aucun fichier geoJSON correspondant n'a été trouvé.");
+        }
+
+        if (!matches[0].download_url) {
+          throw new Error("URL de téléchargement introuvable.");
+        }
+
+        latestGeoJSONUrl = matches[0].download_url;
+        return latestGeoJSONUrl;
       }
-    
-      if (!map.getLayer("antennes-anfr-layer")) {
-        map.addLayer({
-          id: "antennes-anfr-layer",
-          type: "circle",
-          source: "antennes-anfr",
-          minzoom: 8,
-          paint: {
-            "circle-radius": [
-              "interpolate", ["linear"], ["zoom"],
-              8, 2,
-              10, 3,
-              13, 4,
-              16, 6
-            ],
-            "circle-color": "#ff0000",
-            "circle-opacity": 0.85,
-            "circle-stroke-width": 1.2,
-            "circle-stroke-color": "#ffffff"
+
+      async function ensureAntennesLayer() {
+        try {
+          const geojsonUrl = await getLatestGeoJSONUrl();
+
+          if (!map.getSource("antennes-anfr")) {
+            map.addSource("antennes-anfr", {
+              type: "geojson",
+              data: geojsonUrl
+            });
           }
-        });
+
+          if (!map.getLayer("antennes-anfr-layer")) {
+            map.addLayer({
+              id: "antennes-anfr-layer",
+              type: "circle",
+              source: "antennes-anfr",
+              minzoom: 8,
+              paint: {
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  8,
+                  2,
+                  10,
+                  3,
+                  13,
+                  4,
+                  16,
+                  6
+                ],
+                "circle-color": "#ff0000",
+                "circle-opacity": 0.85,
+                "circle-stroke-width": 1.2,
+                "circle-stroke-color": "#ffffff"
+              }
+            });
+          }
+
+          if (map.getLayer("antennes-anfr-layer")) {
+            map.setLayoutProperty(
+              "antennes-anfr-layer",
+              "visibility",
+              antennesVisible ? "visible" : "none"
+            );
+          }
+        } catch (e) {
+          console.error("Erreur chargement GeoJSON ANFR :", e);
+        }
       }
-    
-      if (map.getLayer("antennes-anfr-layer")) {
-        map.setLayoutProperty(
-          "antennes-anfr-layer",
-          "visibility",
-          antennesVisible ? "visible" : "none"
-        );
-      }
-    }
-      
-      map.on("load", function () {
+
+      map.on("load", async function () {
         CarteFacile.addOverlay(map, "levelCurves");
-        ensureAntennesLayer();
+        await ensureAntennesLayer();
       });
 
-      map.on("style.load", function () {
+      map.on("style.load", async function () {
         CarteFacile.addOverlay(map, "levelCurves");
-        ensureAntennesLayer();
+        await ensureAntennesLayer();
       });
 
       map.on("click", "antennes-anfr-layer", function (e) {
@@ -182,10 +261,14 @@
           .setLngLat(coords)
           .setHTML(
             "<strong>Support ANFR</strong><br>" +
-            "SUP_ID : " + supId + "<br>" +
-            "<a href='https://www.cartoradio.fr/#/cartographie/lonlat/" +
-            coords[0] + "/" + coords[1] +
-            "' target='_blank' rel='noopener'>Ouvrir Cartoradio</a>"
+              "SUP_ID : " +
+              supId +
+              "<br>" +
+              "<a href='https://www.cartoradio.fr/#/cartographie/lonlat/" +
+              coords[0] +
+              "/" +
+              coords[1] +
+              "' target='_blank' rel='noopener'>Ouvrir Cartoradio</a>"
           )
           .addTo(map);
       });
@@ -198,20 +281,24 @@
         map.getCanvas().style.cursor = "";
       });
 
-      document.getElementById("toggleAntennesBtn").addEventListener("click", function () {
-        antennesVisible = !antennesVisible;
-      
-        if (map.getLayer("antennes-anfr-layer")) {
-          map.setLayoutProperty(
-            "antennes-anfr-layer",
-            "visibility",
-            antennesVisible ? "visible" : "none"
-          );
-        }
-      
-        this.textContent = antennesVisible ? "Antennes : ON" : "Antennes : OFF";
-      });
-      
+      document
+        .getElementById("toggleAntennesBtn")
+        .addEventListener("click", function () {
+          antennesVisible = !antennesVisible;
+
+          if (map.getLayer("antennes-anfr-layer")) {
+            map.setLayoutProperty(
+              "antennes-anfr-layer",
+              "visibility",
+              antennesVisible ? "visible" : "none"
+            );
+          }
+
+          this.textContent = antennesVisible
+            ? "Antennes : ON"
+            : "Antennes : OFF";
+        });
+
       function getNiceScaleDistance(targetMeters) {
         const niceValues = [
           1, 2, 5,
@@ -233,7 +320,7 @@
 
       function formatScaleLabel(meters) {
         if (meters >= 1000) {
-          return (meters / 1000) + " km";
+          return meters / 1000 + " km";
         }
         return meters + " m";
       }
@@ -247,7 +334,6 @@
         const boxPaddingX = 12;
         const boxPaddingY = 10;
         const textBarGap = 6;
-        const labelGap = 14;
 
         const yMeasure = canvasHeight - marginBottom - 30;
         const xMeasure = marginLeft;
@@ -288,10 +374,7 @@
 
         const boxY = textTop - 12 - boxPaddingY;
 
-        const contentLeft = Math.min(
-          xBar - leftWidth / 2,
-          xBar
-        );
+        const contentLeft = Math.min(xBar - leftWidth / 2, xBar);
 
         const contentRight = Math.max(
           xBar + scalePx + rightWidth / 2,
@@ -301,7 +384,8 @@
         const boxX = contentLeft - boxPaddingX;
         const boxWidth = (contentRight - contentLeft) + boxPaddingX * 2;
         const tickExtraBottom = 8;
-        const boxHeight = (textTop - boxY) + barHeight + boxPaddingY + tickExtraBottom;
+        const boxHeight =
+          textTop - boxY + barHeight + boxPaddingY + tickExtraBottom;
 
         ctx.fillStyle = "rgba(255,255,255,0.78)";
         ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
@@ -357,10 +441,25 @@
         const coinSO = map.unproject([0, mapHeightCss]);
 
         const txt =
-          "SO;" + coinSO.lat.toFixed(8) + ";" + coinSO.lng.toFixed(8) + "\n" +
-          "NO;" + coinNO.lat.toFixed(8) + ";" + coinNO.lng.toFixed(8) + "\n" +
-          "NE;" + coinNE.lat.toFixed(8) + ";" + coinNE.lng.toFixed(8) + "\n" +
-          "SE;" + coinSE.lat.toFixed(8) + ";" + coinSE.lng.toFixed(8);
+          "SO;" +
+          coinSO.lat.toFixed(8) +
+          ";" +
+          coinSO.lng.toFixed(8) +
+          "\n" +
+          "NO;" +
+          coinNO.lat.toFixed(8) +
+          ";" +
+          coinNO.lng.toFixed(8) +
+          "\n" +
+          "NE;" +
+          coinNE.lat.toFixed(8) +
+          ";" +
+          coinNE.lng.toFixed(8) +
+          "\n" +
+          "SE;" +
+          coinSE.lat.toFixed(8) +
+          ";" +
+          coinSE.lng.toFixed(8);
 
         document.getElementById("coordsCorners").value = txt;
       }
@@ -456,9 +555,15 @@
             exportCanvas.height = sourceCanvas.height;
 
             const ctx = exportCanvas.getContext("2d");
-            ctx.drawImage(sourceCanvas, 0, 0, exportCanvas.width, exportCanvas.height);
-            updateCornerCoordinates(map, exportCanvas.width, exportCanvas.height);
+            ctx.drawImage(
+              sourceCanvas,
+              0,
+              0,
+              exportCanvas.width,
+              exportCanvas.height
+            );
 
+            updateCornerCoordinates(map);
             drawScaleOnCanvas(ctx, map, exportCanvas.width, exportCanvas.height);
 
             const dataURL = exportCanvas.toDataURL("image/png");
