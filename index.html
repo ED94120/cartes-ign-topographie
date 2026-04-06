@@ -241,12 +241,10 @@
       }
 
       map.on("load", async function () {
-        CarteFacile.addOverlay(map, "levelCurves");
         await ensureAntennesLayer();
       });
 
       map.on("style.load", async function () {
-        CarteFacile.addOverlay(map, "levelCurves");
         await ensureAntennesLayer();
       });
 
