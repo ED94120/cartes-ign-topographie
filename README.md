@@ -23,3 +23,5 @@ Nom du fichier à l'intérieur du fichier ZIP contenant les coordonnées latitud
 Le fichier SUP_SUPPORT.txt doit ensuite être converti en fichier geoJSON.
 
 La conversion est réalisée avec l'application accessible avec cette URL : https://ed94120.github.io/anfr-supports-to-geojson/
+
+L'utilitaire carte-ign-topographie utilise le fichier geoJSON le plus récent disponible dans le répertoire Data.
