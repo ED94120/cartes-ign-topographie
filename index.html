@@ -28,23 +28,51 @@
         margin: 0;
       }
 
+      body {
+        font-family: Arial, sans-serif;
+      }
+
       #map {
         background: #000120;
       }
 
-      #savePngBtn {
+      .tool-button {
         position: absolute;
         top: 8px;
-        right: 50px;
         z-index: 1000;
         padding: 8px 12px;
         font-size: 14px;
         cursor: pointer;
+        border: 1px solid #555;
+        border-radius: 4px;
+        background: white;
       }
 
-      #savePngBtn:disabled {
+      .tool-button:hover {
+        background: #f0f0f0;
+      }
+
+      .tool-button:disabled {
         opacity: 0.6;
         cursor: wait;
+      }
+
+      #savePngBtn {
+        right: 50px;
+      }
+
+      #toggleAntennesBtn {
+        right: 150px;
+      }
+
+      .input-zone {
+        border: 2px solid #cc0000;
+        background: #fff8f8;
+      }
+
+      .output-zone {
+        border: 2px solid #003366;
+        background: #f6f9ff;
       }
 
       #previewContainer {
@@ -52,16 +80,45 @@
         left: 10px;
         bottom: 10px;
         z-index: 1000;
-        width: 320px;
-        background: white;
-        border: 1px solid #999;
-        padding: 10px;
+        width: 340px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 2px solid #003366;
+        border-radius: 8px;
+        padding: 12px;
         box-sizing: border-box;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      }
+
+      #legendBox {
+        font-size: 12px;
+        margin-bottom: 8px;
+        line-height: 1.5;
+      }
+
+      .legend-input,
+      .legend-output {
+        display: inline-block;
+        width: 18px;
+        height: 10px;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+
+      .legend-input {
+        border: 2px solid #cc0000;
+        background: #fff8f8;
+      }
+
+      .legend-output {
+        border: 2px solid #003366;
+        background: #f6f9ff;
       }
 
       #downloadLink {
         display: inline-block;
         margin-bottom: 8px;
+        color: #003366;
+        font-weight: bold;
       }
 
       #previewImg {
@@ -70,55 +127,86 @@
         height: auto;
         min-height: 120px;
         object-fit: contain;
-        border: 1px solid #999;
-        background: #f5f5f5;
+        border: 2px solid #003366;
+        background: #f6f9ff;
+        box-sizing: border-box;
+      }
+
+      #coordsCorners {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        padding: 6px;
+        resize: vertical;
+      }
+
+      #geojsonStatus {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #003366;
+        padding: 6px;
+        box-sizing: border-box;
       }
 
       #previewStatus {
         margin-top: 8px;
         font-size: 12px;
-        color: #333;
+        color: #003366;
+        padding: 6px;
+        box-sizing: border-box;
+      }
+
+      .error-zone {
+        border: 2px solid #cc0000;
+        background: #fff8f8;
+        color: #cc0000;
+      }
+
+      label {
+        display: block;
+        margin-top: 8px;
+        margin-bottom: 4px;
+        font-size: 13px;
       }
     </style>
   </head>
 
   <body>
-    <button id="savePngBtn">Save .png</button>
-    <button
-      id="toggleAntennesBtn"
-      style="
-        position:absolute;
-        top:8px;
-        right:150px;
-        z-index:1000;
-        padding:8px 12px;
-        font-size:14px;
-        cursor:pointer;
-      "
-    >
-      Antennes : ON
-    </button>
+    <button id="savePngBtn" class="tool-button">Save .png</button>
+    <button id="toggleAntennesBtn" class="tool-button">Antennes : ON</button>
 
     <div id="map"></div>
 
     <div id="previewContainer">
+      <div id="legendBox">
+        <span class="legend-input"></span> Donnée en entrée
+        <br />
+        <span class="legend-output"></span> Résultat en sortie
+      </div>
+
       <a id="downloadLink" href="#" download="carte.png">Télécharger le PNG</a>
+
       <img id="previewImg" alt="Aperçu PNG" />
+
+      <div id="geojsonStatus" class="output-zone">
+        GeoJSON : non chargé
+      </div>
+
       <label for="coordsCorners">
-        <strong>Coins géographiques (SO, NO, NE, SE)</strong>
+        <strong>Coins géographiques — SO, NO, NE, SE</strong>
       </label>
+
       <textarea
         id="coordsCorners"
+        class="input-zone"
         rows="10"
-        style="
-          width:100%;
-          box-sizing:border-box;
-          margin-top:8px;
-          font-family:monospace;
-          font-size:12px;
-        "
       ></textarea>
-      <div id="previewStatus">Aucun aperçu généré.</div>
+
+      <div id="previewStatus" class="output-zone">
+        Aucun aperçu généré.
+      </div>
     </div>
 
     <script>
@@ -135,6 +223,7 @@
 
       const GEOJSON_API_URL =
         "https://api.github.com/repos/ED94120/cartes-ign-topographie/contents/data";
+
       let latestGeoJSONUrl = "";
 
       map.addControl(new CarteFacile.SearchControl());
@@ -151,6 +240,29 @@
       map.addControl(new maplibregl.GeolocateControl());
       map.addControl(new CarteFacile.MapSelectorControl());
 
+      function setGeojsonStatus(message, isError) {
+        const geojsonStatus = document.getElementById("geojsonStatus");
+
+        if (!geojsonStatus) {
+          return;
+        }
+
+        geojsonStatus.textContent = message;
+
+        if (isError) {
+          geojsonStatus.classList.remove("output-zone");
+          geojsonStatus.classList.add("error-zone");
+        } else {
+          geojsonStatus.classList.remove("error-zone");
+          geojsonStatus.classList.add("output-zone");
+        }
+      }
+
+      function getDateFromGeoJSONName(fileName) {
+        const match = fileName.match(/\d{4}-\d{2}-\d{2}/);
+        return match ? match[0] : "";
+      }
+
       async function getLatestGeoJSONUrl() {
         if (latestGeoJSONUrl) {
           return latestGeoJSONUrl;
@@ -159,7 +271,10 @@
         const prefix = "GeoJSON-support_antennes_ANFR-light-";
         const suffix = ".geojson";
 
+        setGeojsonStatus("GeoJSON : recherche du fichier le plus récent...", false);
+
         const response = await fetch(GEOJSON_API_URL);
+
         if (!response.ok) {
           throw new Error("Impossible de lire le contenu du dossier data.");
         }
@@ -175,10 +290,14 @@
               item.name.startsWith(prefix) &&
               item.name.endsWith(suffix)
           )
-          .sort((a, b) => b.name.localeCompare(a.name));
+          .sort((a, b) => {
+            const dateA = getDateFromGeoJSONName(a.name);
+            const dateB = getDateFromGeoJSONName(b.name);
+            return dateB.localeCompare(dateA);
+          });
 
         if (matches.length === 0) {
-          throw new Error("Aucun fichier geoJSON correspondant n'a été trouvé.");
+          throw new Error("Aucun fichier GeoJSON correspondant n'a été trouvé.");
         }
 
         if (!matches[0].download_url) {
@@ -186,6 +305,9 @@
         }
 
         latestGeoJSONUrl = matches[0].download_url;
+
+        setGeojsonStatus("GeoJSON chargé : " + matches[0].name, false);
+
         return latestGeoJSONUrl;
       }
 
@@ -237,6 +359,7 @@
           }
         } catch (e) {
           console.error("Erreur chargement GeoJSON ANFR :", e);
+          setGeojsonStatus("Erreur GeoJSON : " + e.message, true);
         }
       }
 
@@ -250,10 +373,19 @@
 
       map.on("click", "antennes-anfr-layer", function (e) {
         const feature = e.features && e.features[0];
-        if (!feature) return;
+
+        if (!feature) {
+          return;
+        }
 
         const coords = feature.geometry.coordinates.slice();
-        const supId = feature.properties.SUP_ID || "";
+        const supId = feature.properties?.SUP_ID || "";
+
+        const cartoradioUrl =
+          "https://www.cartoradio.fr/#/cartographie/lonlat/" +
+          encodeURIComponent(coords[0]) +
+          "/" +
+          encodeURIComponent(coords[1]);
 
         new maplibregl.Popup({ closeButton: true })
           .setLngLat(coords)
@@ -262,10 +394,8 @@
               "SUP_ID : " +
               supId +
               "<br>" +
-              "<a href='https://www.cartoradio.fr/#/cartographie/lonlat/" +
-              coords[0] +
-              "/" +
-              coords[1] +
+              "<a href='" +
+              cartoradioUrl +
               "' target='_blank' rel='noopener'>Ouvrir Cartoradio</a>"
           )
           .addTo(map);
@@ -320,6 +450,7 @@
         if (meters >= 1000) {
           return meters / 1000 + " km";
         }
+
         return meters + " m";
       }
 
@@ -380,8 +511,9 @@
         );
 
         const boxX = contentLeft - boxPaddingX;
-        const boxWidth = (contentRight - contentLeft) + boxPaddingX * 2;
+        const boxWidth = contentRight - contentLeft + boxPaddingX * 2;
         const tickExtraBottom = 8;
+
         const boxHeight =
           textTop - boxY + barHeight + boxPaddingY + tickExtraBottom;
 
@@ -403,6 +535,7 @@
         ctx.strokeRect(xBar, yBar, scalePx, barHeight);
 
         ctx.beginPath();
+
         ctx.moveTo(xBar, yBar);
         ctx.lineTo(xBar, yBar + barHeight + 4);
 
@@ -411,6 +544,7 @@
 
         ctx.moveTo(xBar + scalePx, yBar);
         ctx.lineTo(xBar + scalePx, yBar + barHeight + 4);
+
         ctx.stroke();
 
         ctx.fillStyle = "black";
@@ -474,6 +608,7 @@
         downloadLink.download = fileName;
 
         const now = new Date();
+
         previewStatus.textContent =
           "Aperçu mis à jour : " + now.toLocaleTimeString();
       }
@@ -507,6 +642,7 @@
           map.once("render", function () {
             resolve();
           });
+
           map.triggerRepaint();
         });
       }
@@ -514,12 +650,14 @@
       document
         .getElementById("savePngBtn")
         .addEventListener("click", async function () {
-          if (isGenerating) return;
+          if (isGenerating) {
+            return;
+          }
 
           const now = new Date();
           const pad = (n) => String(n).padStart(2, "0");
 
-          let fileName =
+          const fileName =
             "carteIGN_" +
             now.getFullYear() +
             "-" +
@@ -553,6 +691,7 @@
             exportCanvas.height = sourceCanvas.height;
 
             const ctx = exportCanvas.getContext("2d");
+
             ctx.drawImage(
               sourceCanvas,
               0,
@@ -575,6 +714,8 @@
             console.error(e);
             alert("Erreur pendant la génération du PNG.");
             previewStatus.textContent = "Erreur pendant la génération.";
+            previewStatus.classList.remove("output-zone");
+            previewStatus.classList.add("error-zone");
           } finally {
             isGenerating = false;
             btn.disabled = false;
