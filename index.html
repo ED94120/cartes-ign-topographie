@@ -80,11 +80,6 @@
         color: black;
       }
 
-      .input-zone {
-        border: 2px solid #cc0000;
-        background: #fff8f8;
-      }
-
       .output-zone {
         border: 2px solid #003366;
         background: #f6f9ff;
@@ -352,6 +347,10 @@
 
       async function ensureAntennesLayer() {
         try {
+          if (!map.isStyleLoaded()) {
+            return;
+          }
+
           const geojsonUrl = await getLatestGeoJSONUrl();
 
           if (!map.getSource("antennes-anfr")) {
@@ -452,20 +451,32 @@
 
       document
         .getElementById("toggleAntennesBtn")
-        .addEventListener("click", function () {
+        .addEventListener("click", async function () {
           antennesVisible = !antennesVisible;
-
-          if (map.getLayer("antennes-anfr-layer")) {
-            map.setLayoutProperty(
-              "antennes-anfr-layer",
-              "visibility",
-              antennesVisible ? "visible" : "none"
-            );
-          }
 
           this.textContent = antennesVisible
             ? "Antennes : ON"
             : "Antennes : OFF";
+
+          if (antennesVisible) {
+            await ensureAntennesLayer();
+
+            if (map.getLayer("antennes-anfr-layer")) {
+              map.setLayoutProperty(
+                "antennes-anfr-layer",
+                "visibility",
+                "visible"
+              );
+            }
+          } else {
+            if (map.getLayer("antennes-anfr-layer")) {
+              map.setLayoutProperty(
+                "antennes-anfr-layer",
+                "visibility",
+                "none"
+              );
+            }
+          }
 
           updateAntennaStatus("", false);
         });
