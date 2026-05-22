@@ -43,9 +43,7 @@
         padding: 8px 12px;
         font-size: 14px;
         cursor: pointer;
-        border: 1px solid #555;
         border-radius: 4px;
-        background: white;
       }
 
       .tool-button:hover {
@@ -59,10 +57,27 @@
 
       #savePngBtn {
         right: 50px;
+        border: 2px solid #0b7a28;
+        background: #e9f8ee;
+        color: #0b5f20;
+        font-weight: bold;
+      }
+
+      #savePngBtn:hover {
+        background: #d4f0dc;
+      }
+
+      #savePngBtn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+        background: #e9f8ee;
       }
 
       #toggleAntennesBtn {
         right: 150px;
+        border: 1px solid #555;
+        background: white;
+        color: black;
       }
 
       .input-zone {
@@ -73,6 +88,12 @@
       .output-zone {
         border: 2px solid #003366;
         background: #f6f9ff;
+      }
+
+      .error-zone {
+        border: 2px solid #cc0000;
+        background: #fff8f8;
+        color: #cc0000;
       }
 
       #previewContainer {
@@ -92,26 +113,10 @@
       #legendBox {
         font-size: 12px;
         margin-bottom: 8px;
-        line-height: 1.5;
-      }
-
-      .legend-input,
-      .legend-output {
-        display: inline-block;
-        width: 18px;
-        height: 10px;
-        margin-right: 6px;
-        vertical-align: middle;
-      }
-
-      .legend-input {
-        border: 2px solid #cc0000;
-        background: #fff8f8;
-      }
-
-      .legend-output {
-        border: 2px solid #003366;
-        background: #f6f9ff;
+        line-height: 1.4;
+        color: #003366;
+        padding: 6px;
+        box-sizing: border-box;
       }
 
       #downloadLink {
@@ -140,6 +145,7 @@
         font-size: 12px;
         padding: 6px;
         resize: vertical;
+        color: #003366;
       }
 
       #geojsonStatus {
@@ -158,17 +164,27 @@
         box-sizing: border-box;
       }
 
-      .error-zone {
-        border: 2px solid #cc0000;
-        background: #fff8f8;
-        color: #cc0000;
-      }
-
       label {
         display: block;
         margin-top: 8px;
         margin-bottom: 4px;
         font-size: 13px;
+      }
+
+      .maplibregl-ctrl input[type="text"],
+      .maplibregl-ctrl input[type="search"],
+      .carte-facile-search-control input {
+        border: 2px solid #cc0000 !important;
+        background: #fff8f8 !important;
+        box-sizing: border-box;
+      }
+
+      .maplibregl-ctrl input[type="text"]:focus,
+      .maplibregl-ctrl input[type="search"]:focus,
+      .carte-facile-search-control input:focus {
+        outline: none;
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 0 2px rgba(204, 0, 0, 0.25);
       }
     </style>
   </head>
@@ -180,10 +196,9 @@
     <div id="map"></div>
 
     <div id="previewContainer">
-      <div id="legendBox">
-        <span class="legend-input"></span> Donnée en entrée
-        <br />
-        <span class="legend-output"></span> Résultat en sortie
+      <div id="legendBox" class="output-zone">
+        Résultats affichés : aperçu PNG, état des antennes, fichier GeoJSON utilisé,
+        coordonnées géographiques et statut.
       </div>
 
       <a id="downloadLink" href="#" download="carte.png">Télécharger le PNG</a>
@@ -191,7 +206,7 @@
       <img id="previewImg" alt="Aperçu PNG" />
 
       <div id="geojsonStatus" class="output-zone">
-        GeoJSON : non chargé
+        Antennes : affichées — GeoJSON non encore chargé
       </div>
 
       <label for="coordsCorners">
@@ -200,8 +215,9 @@
 
       <textarea
         id="coordsCorners"
-        class="input-zone"
+        class="output-zone"
         rows="10"
+        readonly
       ></textarea>
 
       <div id="previewStatus" class="output-zone">
@@ -225,6 +241,7 @@
         "https://api.github.com/repos/ED94120/cartes-ign-topographie/contents/data";
 
       let latestGeoJSONUrl = "";
+      let latestGeoJSONName = "";
 
       map.addControl(new CarteFacile.SearchControl());
       map.addControl(new maplibregl.NavigationControl());
@@ -240,21 +257,39 @@
       map.addControl(new maplibregl.GeolocateControl());
       map.addControl(new CarteFacile.MapSelectorControl());
 
-      function setGeojsonStatus(message, isError) {
+      function updateAntennaStatus(message, isError) {
         const geojsonStatus = document.getElementById("geojsonStatus");
 
         if (!geojsonStatus) {
           return;
         }
 
-        geojsonStatus.textContent = message;
-
         if (isError) {
+          geojsonStatus.textContent = message;
           geojsonStatus.classList.remove("output-zone");
           geojsonStatus.classList.add("error-zone");
+          return;
+        }
+
+        geojsonStatus.classList.remove("error-zone");
+        geojsonStatus.classList.add("output-zone");
+
+        if (!antennesVisible) {
+          geojsonStatus.textContent = "Antennes : masquées";
+          return;
+        }
+
+        if (message) {
+          geojsonStatus.textContent = message;
+          return;
+        }
+
+        if (latestGeoJSONName) {
+          geojsonStatus.textContent =
+            "Antennes : affichées — fichier : " + latestGeoJSONName;
         } else {
-          geojsonStatus.classList.remove("error-zone");
-          geojsonStatus.classList.add("output-zone");
+          geojsonStatus.textContent =
+            "Antennes : affichées — GeoJSON non encore chargé";
         }
       }
 
@@ -271,7 +306,10 @@
         const prefix = "GeoJSON-support_antennes_ANFR-light-";
         const suffix = ".geojson";
 
-        setGeojsonStatus("GeoJSON : recherche du fichier le plus récent...", false);
+        updateAntennaStatus(
+          "Antennes : affichées — recherche du fichier GeoJSON le plus récent...",
+          false
+        );
 
         const response = await fetch(GEOJSON_API_URL);
 
@@ -305,8 +343,9 @@
         }
 
         latestGeoJSONUrl = matches[0].download_url;
+        latestGeoJSONName = matches[0].name;
 
-        setGeojsonStatus("GeoJSON chargé : " + matches[0].name, false);
+        updateAntennaStatus("", false);
 
         return latestGeoJSONUrl;
       }
@@ -357,9 +396,11 @@
               antennesVisible ? "visible" : "none"
             );
           }
+
+          updateAntennaStatus("", false);
         } catch (e) {
           console.error("Erreur chargement GeoJSON ANFR :", e);
-          setGeojsonStatus("Erreur GeoJSON : " + e.message, true);
+          updateAntennaStatus("Erreur GeoJSON : " + e.message, true);
         }
       }
 
@@ -425,6 +466,8 @@
           this.textContent = antennesVisible
             ? "Antennes : ON"
             : "Antennes : OFF";
+
+          updateAntennaStatus("", false);
         });
 
       function getNiceScaleDistance(targetMeters) {
@@ -609,6 +652,9 @@
 
         const now = new Date();
 
+        previewStatus.classList.remove("error-zone");
+        previewStatus.classList.add("output-zone");
+
         previewStatus.textContent =
           "Aperçu mis à jour : " + now.toLocaleTimeString();
       }
@@ -678,6 +724,9 @@
           isGenerating = true;
           btn.disabled = true;
           btn.textContent = "Génération...";
+
+          previewStatus.classList.remove("error-zone");
+          previewStatus.classList.add("output-zone");
           previewStatus.textContent = "Génération du PNG en cours...";
 
           try {
@@ -713,6 +762,7 @@
           } catch (e) {
             console.error(e);
             alert("Erreur pendant la génération du PNG.");
+
             previewStatus.textContent = "Erreur pendant la génération.";
             previewStatus.classList.remove("output-zone");
             previewStatus.classList.add("error-zone");
